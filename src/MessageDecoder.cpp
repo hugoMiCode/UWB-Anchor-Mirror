@@ -2,7 +2,8 @@
 
 void (*MessageDecoder::_handleCmdResetRace)() = nullptr;
 void (*MessageDecoder::_handleCmdStartRace)() = nullptr;
-void (*MessageDecoder::_handleCmdCalibrateAnchor)() = nullptr;
+void (*MessageDecoder::_handleCmdStartCalibration)() = nullptr;
+void (*MessageDecoder::_handleCmdEndCalibration)() = nullptr;
 
 Command MessageDecoder::decodeMessage(const char *message)
 {
@@ -51,9 +52,14 @@ void MessageDecoder::executeCommand(Command cmd)
                 _handleCmdStartRace();
             }
             break;
-        case Command::CALIBRATE_ANCHOR:
-            if (_handleCmdCalibrateAnchor != nullptr) {
-                _handleCmdCalibrateAnchor();
+        case Command::START_CALIBRATION:
+            if (_handleCmdStartCalibration != nullptr) {
+                _handleCmdStartCalibration();
+            }
+            break;
+        case Command::END_CALIBRATION:
+            if (_handleCmdEndCalibration != nullptr) {
+                _handleCmdEndCalibration();
             }
             break;
         default:

@@ -11,7 +11,8 @@ enum class Command {
     NONE = 0,
     RESET_RACE = 1,
     START_RACE = 2,
-    CALIBRATE_ANCHOR = 3,
+    START_CALIBRATION = 3,
+    END_CALIBRATION = 4
 };
 
 // TODO: mettre dans la class les fonctions a appeler en fonction de la commande
@@ -31,13 +32,18 @@ public:
         _handleCmdStartRace = handleCmdStartRace;
     };
 
-    static void attachCmdCalibrateAnchor(void (*handleCmdCalibrateAnchor)()) {
-        _handleCmdCalibrateAnchor = handleCmdCalibrateAnchor;
+    static void attachCmdStartCalibration(void (*handleCmdStartCalibration)()) {
+        _handleCmdStartCalibration = handleCmdStartCalibration;
+    };
+
+    static void attachCmdEndCalibration(void (*handleCmdEndCalibration)()) {
+        _handleCmdEndCalibration = handleCmdEndCalibration;
     };
 
 
 private:
     static void (*_handleCmdResetRace)();
     static void (*_handleCmdStartRace)();
-    static void (*_handleCmdCalibrateAnchor)();
+    static void (*_handleCmdStartCalibration)();
+    static void (*_handleCmdEndCalibration)();
 };

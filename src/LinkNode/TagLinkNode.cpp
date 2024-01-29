@@ -1,5 +1,7 @@
 #include "TagLinkNode.h"
 
+// #define SERIAL_DEBUG
+
 TagLinkNode *init_tagLinkNode()
 {
 #ifdef SERIAL_DEBUG
@@ -139,15 +141,38 @@ void delete_link(TagLinkNode *p, uint16_t addr)
 
     while (temp->next != NULL) {
         if (temp->next->tag_addr == addr) {
-            struct TagLinkNode *a = temp->next;
+            struct TagLinkNode *del = temp->next;
             temp->next = temp->next->next;
-            free(a);
+            free(del);
             return;
         }
 
         temp = temp->next;
     }
 
+}
+
+void reset_link(TagLinkNode *p)
+{
+#ifdef SERIAL_DEBUG
+    Serial.println("reset_tagLink");
+#endif
+    if (p->next == NULL) {
+#ifdef SERIAL_DEBUG
+        Serial.println("reset_tagLink:Link is empty");
+#endif
+        return;
+    }
+
+    struct TagLinkNode *temp = p;
+
+    while (temp->next != NULL) {
+        struct TagLinkNode *del = temp->next;
+        temp->next = temp->next->next;
+        free(del);
+    }
+
+    return;
 }
 
 void make_link_json(TagLinkNode *p, String *s)

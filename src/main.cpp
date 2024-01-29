@@ -46,6 +46,9 @@ void init_uwb();
 void init_emitter();
 void init_messageDecoder();
 
+void display_calibration(struct CalibrationLinkNode *p);
+void display_tag(struct TagLinkNode *p);
+
 /*
     TODO: Il faut faire une fonction de calibration pour trouver la distance 
     avec les autres balises.
@@ -57,6 +60,7 @@ void setup()
     Serial.begin(115200);
 
     calibration_data = init_calibrationLinkNode();
+    tag_data = init_tagLinkNode();
 
     init_display();
     init_uwb();
@@ -72,6 +76,8 @@ void setup()
     display.display();
 }
 
+long int runtime = 0;
+
 void loop()
 {
     DW1000Ranging.loop();
@@ -80,6 +86,15 @@ void loop()
 
     if (message != "") {
         Command cmd = messageDecoder.decodeMessage(message.c_str());
+    }
+
+    if ((millis() - runtime) > 200) {
+        display.clearDisplay();
+        display_calibration(calibration_data);
+        display_tag(tag_data);
+        display.display();
+
+        runtime = millis();
     }
 }
 
@@ -94,6 +109,11 @@ void init_display()
         for (;;); // Don't proceed, loop forever
     }
 }
+
+// ATTENTION GROS BUGS
+// Lors du changement de mode entre anchor et tag, cela fais crasher tous les autres tags et anchors
+// il faudrait peut-etre faire SPI.end() et SPI.begin() lors du changement de mode
+// il faudrait aussi reset la communication avec DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ); etc ...
 
 void init_uwb()
 {
@@ -110,14 +130,6 @@ void init_uwb()
                 DW1000Ranging.getDistantDevice()->getRange(), 
                 DW1000Ranging.getDistantDevice()->getRXPower());
             
-            // test -> cela ne marche pas
-            print_link(calibration_data);
-
-            // Serial.println("newRange: calibrationPhase");
-            // Serial.println(DW1000Ranging.getDistantDevice()->getShortAddress(), HEX);
-            // Serial.println(DW1000Ranging.getDistantDevice()->getRange());
-            // Serial.println(DW1000Ranging.getDistantDevice()->getRXPower());
-
             return;
         }
         
@@ -128,26 +140,25 @@ void init_uwb()
             DW1000Ranging.getDistantDevice()->getRXPower());
     });
 
-    // Peut être qu'il faut remplacer cette fonction par attachNewDevice 
-    // DW1000Ranging.attachBlinkDevice([](DW1000Device *device){
-    //     // on est en mode tag
-    //     if (calibrationPhase) {
-    //         add_link(calibration_data, device->getShortAddress());
+    // TODO: Refaire les deux fonctions suivantes
+    // s'assurer qu'elles sont seulement appelées lorsqu'on est en mode anchor ou tag respectivement
+    // Fonctionne lorsqu'on est en mode anchor
+    DW1000Ranging.attachBlinkDevice([](DW1000Device *device){
+        // on est en mode tag
+        if (calibrationPhase) {
+            add_link(calibration_data, device->getShortAddress());
+            return;
+        }
 
-    //         Serial.println("blinkDevice: calibrationPhase");
-    //         return;
-    //     }
+        // on est en mode anchor
+        add_link(tag_data, device->getShortAddress());
+    });
 
-    //     // on est en mode anchor
-    //     add_link(tag_data, device->getShortAddress());
-    // });
-
+    // Fonctionne lorsqu'on est en mode tag
     DW1000Ranging.attachNewDevice([](DW1000Device *device){
         // on est en mode tag
         if (calibrationPhase) {
             add_link(calibration_data, device->getShortAddress());
-
-            Serial.println("newDevice: calibrationPhase");
             return;
         }
 
@@ -240,23 +251,95 @@ void init_emitter()
 }
 
 // TODO: Il faut finir la fonction de calibration
-// On doit mettre un timeout pour la calibration et récupérer assez de distances par anchor pour faire une moyenne
+// On doit mettre un timeout pour la calibration -> si on ne reçoit pas de message
 // On doit aussi envoyer les distances a l'host -> pas dans cette fonction
 void init_messageDecoder()
 {
-    // La calibration consiste a a changer l'anchor en tag et a trouver les distances avec les autres anchors
-    // on remet ensuite l'anchor en anchor et on envoie les distances a l'host
-    messageDecoder.attachCmdCalibrateAnchor([](){
+    messageDecoder.attachCmdStartCalibration([](){
         // On change l'anchor en tag
         DW1000.setAntennaDelay(TDelay);
         DW1000Ranging.startAsTag((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
         calibrationPhase = true;
-    
-        display.clearDisplay();
-        display.setTextSize(1);
-        display.setTextColor(SSD1306_WHITE);
-        display.setCursor(0, 0); // Start at top-left corner
-        display.println("Calibration");
-        display.display();
+
+        reset_link(calibration_data);
     });
+
+    messageDecoder.attachCmdEndCalibration([](){
+        // On change le tag en anchor
+        DW1000.setAntennaDelay(ADelay);
+        DW1000Ranging.startAsAnchor((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
+        calibrationPhase = false;
+
+        reset_link(tag_data);
+
+        // On doit maintenant envoyer les distances moyennes des anchors a l'host
+    });
+}
+
+void display_calibration(CalibrationLinkNode *p)
+{
+    if (p == nullptr) {
+        return;
+    }
+
+    struct CalibrationLinkNode *tempCalibration = p;
+    int row = 0;
+
+    if (tempCalibration->next == NULL) {
+        display.setTextSize(1);
+        display.setCursor(0, row++ * 8);
+        display.print("No Calibration");
+    }
+
+    while (tempCalibration->next != NULL) {
+        tempCalibration = tempCalibration->next;
+
+        char c[100];
+
+        if (tempCalibration->isCalibrated) {
+            sprintf(c, "%X  %.2f  %d dbm Ok", tempCalibration->anchor_addr, tempCalibration->averageRange, int(tempCalibration->averageDbm));
+        }
+        else 
+            sprintf(c, "%X  %.2f  %d dbm", tempCalibration->anchor_addr, tempCalibration->averageRange, int(tempCalibration->averageDbm));
+
+
+        display.setTextSize(1);
+        display.setCursor(0, row++ * 8); // Start at top-left corner
+        display.print(c);
+
+        if (row >= 8) { 
+            break;
+        }
+    }
+}
+
+void display_tag(TagLinkNode *p)
+{
+    if (p == nullptr) {
+        return;
+    }
+
+    struct TagLinkNode *tempTag = p;
+    int row = 4;
+
+    if (tempTag->next == NULL) {
+        display.setTextSize(1);
+        display.setCursor(0, row++ * 8);
+        display.print("No Tag");
+    }
+
+    while (tempTag->next != NULL) {
+        tempTag = tempTag->next;
+
+        char c[50];
+        sprintf(c, "%X  %.2f  %d dbm", tempTag->tag_addr, tempTag->range, int(tempTag->dbm));
+
+        display.setTextSize(1);
+        display.setCursor(0, row++ * 8); // Start at top-left corner
+        display.print(c);
+
+        if (row >= 8) { 
+            break;
+        }
+    }
 }

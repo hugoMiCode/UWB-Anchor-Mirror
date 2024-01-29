@@ -1,5 +1,6 @@
 #include "CalibrationLinkNode.h"
 
+
 CalibrationLinkNode *init_calibrationLinkNode()
 {
 #ifdef SERIAL_DEBUG
@@ -11,6 +12,7 @@ CalibrationLinkNode *init_calibrationLinkNode()
     p->averageRange = 0.0;
     p->averageDbm = 0.0;
     p->numberOfValues = 0;
+    p->isCalibrated = false;
     
     return p;
 }
@@ -31,6 +33,7 @@ void add_link(CalibrationLinkNode *p, uint16_t addr)
     a->averageRange = 0.0;
     a->averageDbm = 0.0;
     a->numberOfValues = 0;
+    a->isCalibrated = false;
     a->next = NULL;
 
     //Add anchor to end of struct MyLink
@@ -87,9 +90,19 @@ void update_link(CalibrationLinkNode *p, uint16_t addr, float range, float dbm)
         return;
     }
 
+    if (temp->isCalibrated) {
+    #ifdef SERIAL_DEBUG
+        Serial.println("update_calibrationLink:Anchor is calibrated");
+    #endif
+        return;
+    }
+
     temp->averageRange = (temp->averageRange * temp->numberOfValues + range) / (temp->numberOfValues + 1);
     temp->averageDbm =   (temp->averageDbm   * temp->numberOfValues + dbm)   / (temp->numberOfValues + 1);
     temp->numberOfValues++;
+
+    if (temp->numberOfValues >= maxValues)
+        temp->isCalibrated = true;
 
     return;
 }
@@ -117,7 +130,9 @@ void print_link(CalibrationLinkNode *p)
         Serial.print(" averageDbm:");
         Serial.print(temp->averageDbm);
         Serial.print(" numberOfValues:");
-        Serial.println(temp->numberOfValues);
+        Serial.print(temp->numberOfValues);
+        Serial.print(" isCalibrated:");
+        Serial.println(temp->isCalibrated);
     }
 
     return;
@@ -156,6 +171,28 @@ void delete_link(CalibrationLinkNode *p, uint16_t addr)
     }
 }
 
+void reset_link(CalibrationLinkNode *p)
+{
+#ifdef SERIAL_DEBUG
+    Serial.println("reset_calibrationLink");
+#endif
+    if (p->next == NULL) {
+    #ifdef SERIAL_DEBUG
+        Serial.println("reset_calibrationLink:Link is empty");
+    #endif
+        return;
+    }
+
+    struct CalibrationLinkNode *temp = p;
+
+    while (temp->next != NULL) {
+        struct CalibrationLinkNode *del = temp->next;
+        temp->next = temp->next->next;
+        free(del);
+    }
+}
+
+// Rajouter le fait que la calibration est finie ou non
 void make_link_json(CalibrationLinkNode *p, String *s)
 {
 #ifdef SERIAL_DEBUG

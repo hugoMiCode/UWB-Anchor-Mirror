@@ -14,4 +14,5 @@ struct TagLinkNode *find_link(struct TagLinkNode *p, uint16_t addr);
 void fresh_link(struct TagLinkNode *p, uint16_t addr, float range, float dbm);
 void print_link(struct TagLinkNode *p);
 void delete_link(struct TagLinkNode *p, uint16_t addr);
+void reset_link(struct TagLinkNode *p);
 void make_link_json(struct TagLinkNode *p,String *s);
