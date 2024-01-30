@@ -9,6 +9,7 @@
 #include "LinkNode/TagLinkNode.h"
 #include "Emitter.h"
 #include "MessageDecoder.h"
+#include "Calibrator.h"
 
 
 
@@ -24,6 +25,7 @@
 #define I2C_SCL 5
 
 #define ANCHOR_ADD "02:00:00:00:00:00:00:01"
+#define TAG_ADD    "12:00:00:00:00:00:00:01"
 
 
 
@@ -33,27 +35,26 @@ struct TagLinkNode *tag_data = nullptr; // TODO: Remplir le Cpp de TagLinkNode
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 Emitter emitter;
 MessageDecoder messageDecoder;
+Calibrator calibrator;
 
 uint16_t ADelay = 16611;
 uint16_t TDelay = 16384;
 
-bool calibrationPhase = false;
-
 
 
 void init_display();
-void init_uwb();
+void init_uwb_anchor();
+void init_uwb_tag();
 void init_emitter();
 void init_messageDecoder();
+void init_calibrator();
 
 void display_calibration(struct CalibrationLinkNode *p);
 void display_tag(struct TagLinkNode *p);
 
 /*
-    TODO: Il faut faire une fonction de calibration pour trouver la distance 
-    avec les autres balises.
+    Il faut absolument trouver pourquoi le programme plante parfois lorsque l'on est connecté a un tag
 */
-
 
 void setup()
 {
@@ -63,17 +64,10 @@ void setup()
     tag_data = init_tagLinkNode();
 
     init_display();
-    init_uwb();
+    init_uwb_anchor();
     init_emitter();
     init_messageDecoder();
-
-
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0); // Start at top-left corner
-    display.println(ANCHOR_ADD);
-    display.display();
+    init_calibrator();
 }
 
 long int runtime = 0;
@@ -81,6 +75,9 @@ long int runtime = 0;
 void loop()
 {
     DW1000Ranging.loop();
+    calibrator.loop();
+
+    // TODO: Si le LinkNode calibration_data est Ok partout (il faudra ajouter le nombre d'anchor minimum), on arrête la calibration
 
     String message = emitter.read();
 
@@ -96,8 +93,11 @@ void loop()
 
         runtime = millis();
     }
+
+    
 }
 
+// Fonctions d'initialisation
 void init_display()
 {
     Wire.begin(I2C_SDA, I2C_SCL);
@@ -108,76 +108,11 @@ void init_display()
         Serial.println(F("SSD1306 allocation failed"));
         for (;;); // Don't proceed, loop forever
     }
-}
 
-// ATTENTION GROS BUGS
-// Lors du changement de mode entre anchor et tag, cela fais crasher tous les autres tags et anchors
-// il faudrait peut-etre faire SPI.end() et SPI.begin() lors du changement de mode
-// il faudrait aussi reset la communication avec DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ); etc ...
-
-void init_uwb()
-{
-    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
-    DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ);
-
-    DW1000.setAntennaDelay(ADelay);
-
-    DW1000Ranging.attachNewRange([](){
-        // on est en mode tag -> on update les moyennes des distances des anchors
-        if (calibrationPhase) {
-            update_link(calibration_data, 
-                DW1000Ranging.getDistantDevice()->getShortAddress(), 
-                DW1000Ranging.getDistantDevice()->getRange(), 
-                DW1000Ranging.getDistantDevice()->getRXPower());
-            
-            return;
-        }
-        
-        // on est en mode anchor -> on update les distances des tags
-        fresh_link(tag_data, 
-            DW1000Ranging.getDistantDevice()->getShortAddress(), 
-            DW1000Ranging.getDistantDevice()->getRange(), 
-            DW1000Ranging.getDistantDevice()->getRXPower());
-    });
-
-    // TODO: Refaire les deux fonctions suivantes
-    // s'assurer qu'elles sont seulement appelées lorsqu'on est en mode anchor ou tag respectivement
-    // Fonctionne lorsqu'on est en mode anchor
-    DW1000Ranging.attachBlinkDevice([](DW1000Device *device){
-        // on est en mode tag
-        if (calibrationPhase) {
-            add_link(calibration_data, device->getShortAddress());
-            return;
-        }
-
-        // on est en mode anchor
-        add_link(tag_data, device->getShortAddress());
-    });
-
-    // Fonctionne lorsqu'on est en mode tag
-    DW1000Ranging.attachNewDevice([](DW1000Device *device){
-        // on est en mode tag
-        if (calibrationPhase) {
-            add_link(calibration_data, device->getShortAddress());
-            return;
-        }
-
-        // on est en mode anchor
-        add_link(tag_data, device->getShortAddress());
-    });
-
-    DW1000Ranging.attachInactiveDevice([](DW1000Device *device){
-        // on est en mode tag
-        if (calibrationPhase) {
-            delete_link(calibration_data, device->getShortAddress());
-            return;
-        }
-
-        // on est en mode anchor
-        delete_link(tag_data, device->getShortAddress());
-    });
-
-    DW1000Ranging.startAsAnchor((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.display();
 }
 
 void init_emitter()
@@ -242,7 +177,6 @@ void init_emitter()
 
     sleep(2);
 
-
     display.clearDisplay(); 
     display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
@@ -250,32 +184,83 @@ void init_emitter()
     display.display();
 }
 
-// TODO: Il faut finir la fonction de calibration
-// On doit mettre un timeout pour la calibration -> si on ne reçoit pas de message
-// On doit aussi envoyer les distances a l'host -> pas dans cette fonction
 void init_messageDecoder()
 {
     messageDecoder.attachCmdStartCalibration([](){
-        // On change l'anchor en tag
-        DW1000.setAntennaDelay(TDelay);
-        DW1000Ranging.startAsTag((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
-        calibrationPhase = true;
-
-        reset_link(calibration_data);
+        calibrator.startCalibration();
     });
 
     messageDecoder.attachCmdEndCalibration([](){
-        // On change le tag en anchor
-        DW1000.setAntennaDelay(ADelay);
-        DW1000Ranging.startAsAnchor((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
-        calibrationPhase = false;
-
-        reset_link(tag_data);
-
-        // On doit maintenant envoyer les distances moyennes des anchors a l'host
+        calibrator.endCalibration();
     });
 }
 
+void init_uwb_anchor()
+{
+    reset_link(tag_data);
+
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
+    DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ);
+
+    DW1000.setAntennaDelay(ADelay);
+
+    DW1000Ranging.attachNewRange([](){
+        fresh_link(tag_data, 
+            DW1000Ranging.getDistantDevice()->getShortAddress(), 
+            DW1000Ranging.getDistantDevice()->getRange(), 
+            DW1000Ranging.getDistantDevice()->getRXPower());
+    });
+
+    DW1000Ranging.attachBlinkDevice([](DW1000Device *device){
+        add_link(tag_data, device->getShortAddress());
+    });
+
+    DW1000Ranging.attachInactiveDevice([](DW1000Device *device){
+        delete_link(tag_data, device->getShortAddress());
+    });
+
+    DW1000Ranging.startAsAnchor((char*)ANCHOR_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
+}
+
+void init_uwb_tag()
+{
+    reset_link(calibration_data);
+
+    SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
+    DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ);
+
+    DW1000.setAntennaDelay(TDelay);
+
+    DW1000Ranging.attachNewRange([](){
+        update_link(calibration_data, 
+            DW1000Ranging.getDistantDevice()->getShortAddress(), 
+            DW1000Ranging.getDistantDevice()->getRange(), 
+            DW1000Ranging.getDistantDevice()->getRXPower());
+    });
+
+    DW1000Ranging.attachNewDevice([](DW1000Device *device){
+        add_link(calibration_data, device->getShortAddress());
+    });
+
+    DW1000Ranging.attachInactiveDevice([](DW1000Device *device){
+        delete_link(calibration_data, device->getShortAddress());
+    });
+
+    DW1000Ranging.startAsTag((char*)TAG_ADD, DW1000.MODE_SHORTDATA_FAST_LOWPOWER, false);
+}
+
+void init_calibrator()
+{
+    calibrator.attachInitUWBAnchor([](){
+        init_uwb_anchor();
+    });
+
+    calibrator.attachInitUWBTag([](){
+        init_uwb_tag();
+    });
+}
+
+// Fonctions d'affichage
 void display_calibration(CalibrationLinkNode *p)
 {
     if (p == nullptr) {

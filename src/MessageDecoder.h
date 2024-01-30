@@ -15,14 +15,14 @@ enum class Command {
     END_CALIBRATION = 4
 };
 
-// TODO: mettre dans la class les fonctions a appeler en fonction de la commande
-// comme dans IRReceiver.h
 // TODO: améliorer la robustesse du décodeur
 
 class MessageDecoder {
 public:
+// TODO: faire cela en une fonction
     Command decodeMessage(const char* message);
     void executeCommand(Command cmd);
+
 
     static void attachCmdResetRace(void (*handleCmdResetRace)()) {
         _handleCmdResetRace = handleCmdResetRace;
