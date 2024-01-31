@@ -21,5 +21,6 @@ void print_link(struct CalibrationLinkNode *p);
 void delete_link(struct CalibrationLinkNode *p, uint16_t addr);
 void reset_link(struct CalibrationLinkNode *p);
 void make_link_json(struct CalibrationLinkNode *p,String *s);
+bool calibration_is_finished(struct CalibrationLinkNode *p, uint16_t nbAnchors = 0);
 
 

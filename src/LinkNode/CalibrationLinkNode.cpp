@@ -216,3 +216,34 @@ void make_link_json(CalibrationLinkNode *p, String *s)
 
     return;
 }
+
+bool calibration_is_finished(CalibrationLinkNode *p, uint16_t nbAnchors)
+{
+#ifdef SERIAL_DEBUG
+    Serial.println("calibration_is_finished ?");
+#endif
+    if (p->next == NULL) {
+    #ifdef SERIAL_DEBUG
+        Serial.println("calibration_is_finished:Link is empty");
+    #endif
+        return false;
+    }
+
+    struct CalibrationLinkNode *temp = p;
+    uint16_t nbAnchorsCal = 0;
+
+    while (temp->next != NULL) {
+        temp = temp->next;
+        nbAnchorsCal++;
+
+        if (!temp->isCalibrated) {
+            return false;
+        }
+    }
+
+    if (nbAnchors == 0 || nbAnchors == nbAnchorsCal) {
+        return true;
+    }
+
+    return false;
+}

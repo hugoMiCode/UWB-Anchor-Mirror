@@ -5,7 +5,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 
-#include "LinkNode/CalibrationLinkNode.h"
 #include "LinkNode/TagLinkNode.h"
 #include "Emitter.h"
 #include "MessageDecoder.h"
@@ -53,7 +52,7 @@ void display_calibration(struct CalibrationLinkNode *p);
 void display_tag(struct TagLinkNode *p);
 
 /*
-    Il faut absolument trouver pourquoi le programme plante parfois lorsque l'on est connecté a un tag
+    Il faut absolument trouver pourquoi le programme plante parfois lorsque l'on est connecté a un tag en mode anchor
 */
 
 void setup()
@@ -93,8 +92,6 @@ void loop()
 
         runtime = millis();
     }
-
-    
 }
 
 // Fonctions d'initialisation
@@ -224,8 +221,6 @@ void init_uwb_anchor()
 
 void init_uwb_tag()
 {
-    reset_link(calibration_data);
-
     SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
     DW1000Ranging.initCommunication(UWB_RST, UWB_SS, UWB_IRQ);
 
@@ -251,6 +246,8 @@ void init_uwb_tag()
 
 void init_calibrator()
 {
+    calibrator.attachLinkNode(calibration_data);
+
     calibrator.attachInitUWBAnchor([](){
         init_uwb_anchor();
     });
