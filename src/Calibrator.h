@@ -31,7 +31,7 @@ private:
     static void (*_handleInitUWBAnchor)();
     static void (*_handleInitUWBTag)();
 
-    struct CalibrationLinkNode *_calibration_data = nullptr;
+    static struct CalibrationLinkNode *_calibration_data;
 
     bool calibrationPhase = false;
     bool toogleMode = false;

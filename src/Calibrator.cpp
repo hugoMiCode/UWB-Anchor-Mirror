@@ -3,6 +3,7 @@
 
 void (*Calibrator::_handleInitUWBAnchor)() = nullptr;
 void (*Calibrator::_handleInitUWBTag)() = nullptr;
+struct CalibrationLinkNode *Calibrator::_calibration_data = nullptr;
 
 Calibrator::Calibrator()
 {
