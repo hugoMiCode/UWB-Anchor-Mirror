@@ -23,8 +23,8 @@
 #define I2C_SDA 4
 #define I2C_SCL 5
 
-#define ANCHOR_ADD "02:00:00:00:00:00:00:01"
-#define TAG_ADD    "12:00:00:00:00:00:00:01"
+#define ANCHOR_ADD "01:00:00:00:00:00:00:01"
+#define TAG_ADD    "11:00:00:00:00:00:00:01"
 
 
 
@@ -131,8 +131,6 @@ void init_emitter()
     emitter.tryToConnectToWifi();
 
 
-    delay(2000);
-
     if (emitter.isConnectedToWifi()) {
         display.clearDisplay();
         display.setTextSize(1);
@@ -153,7 +151,6 @@ void init_emitter()
         display.display();
     }
 
-    sleep(2);
 
     if (emitter.tryToConnectToHost()) {
         display.clearDisplay();
@@ -172,13 +169,7 @@ void init_emitter()
         display.display();
     }
 
-    sleep(2);
-
-    display.clearDisplay(); 
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("Initialisation done");
-    display.display();
+    delay(1000);
 }
 
 void init_messageDecoder()
